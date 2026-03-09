@@ -280,47 +280,7 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
     }
 
-    func sendTestNotification() {
-        guard notificationsAvailable else {
-            showAlert(title: "알림 불가", message: "번들 없이 실행 중입니다. .app 번들로 빌드 후 실행하세요.")
-            return
-        }
-
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            DispatchQueue.main.async {
-                switch settings.authorizationStatus {
-                case .notDetermined:
-                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                        DispatchQueue.main.async {
-                            if granted {
-                                self?.sendNativeNotification(title: "PopUpBot 테스트", body: "알림이 정상적으로 작동합니다!", id: "test-\(UUID().uuidString)")
-                            } else {
-                                self?.showAlert(title: "알림 거부됨", message: "시스템 설정 > 알림 에서 PopUpBot을 허용해 주세요.")
-                            }
-                        }
-                    }
-                case .denied:
-                    self?.showAlert(title: "알림 꺼져 있음", message: "시스템 설정 > 알림 > Telegram Popup Bot 에서 알림을 허용해 주세요.")
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings")!)
-                case .authorized, .provisional, .ephemeral:
-                    self?.sendNativeNotification(title: "PopUpBot 테스트", body: "알림이 정상적으로 작동합니다!", id: "test-\(UUID().uuidString)")
-                @unknown default:
-                    self?.showAlert(title: "알 수 없음", message: "알림 권한 상태: \(settings.authorizationStatus.rawValue)")
-                }
-            }
-        }
-    }
-
-    private func showAlert(title: String, message: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "확인")
-        alert.runModal()
-    }
-
-    // UNUserNotificationCenterDelegate — allow showing notifications while app is running
+    // UNUserNotificationCenterDelegate
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {

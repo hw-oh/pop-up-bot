@@ -23,9 +23,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.togglePanel()
         }
 
-        let token = UserDefaults.standard.string(forKey: "botToken") ?? ""
         let username = UserDefaults.standard.string(forKey: "botUsername") ?? ""
-        if token.isEmpty || username.isEmpty {
+        if username.isEmpty {
             openSettings()
         }
     }

@@ -60,10 +60,6 @@ class StatusBarController {
         zoomParent.submenu = zoomMenu
         menu.addItem(zoomParent)
 
-        let testNotiItem = NSMenuItem(title: "테스트 알림", action: #selector(testNotification), keyEquivalent: "")
-        testNotiItem.target = self
-        menu.addItem(testNotiItem)
-
         let shortcutItem = NSMenuItem(title: "단축키 변경...", action: #selector(changeShortcut), keyEquivalent: "")
         shortcutItem.target = self
         menu.addItem(shortcutItem)
@@ -94,8 +90,6 @@ class StatusBarController {
         guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
         appDelegate.openSettings()
     }
-
-    @objc private func testNotification() { panel?.sendTestNotification() }
 
     @objc private func zoomIn() { panel?.zoomIn() }
     @objc private func zoomOut() { panel?.zoomOut() }
