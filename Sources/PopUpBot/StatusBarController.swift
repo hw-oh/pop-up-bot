@@ -4,6 +4,7 @@ class StatusBarController {
     private var statusItem: NSStatusItem
     private var toggleAction: () -> Void
     private weak var panel: PopUpPanel?
+    private var badgeView: BadgeView?
 
     init(toggleAction: @escaping () -> Void, panel: PopUpPanel) {
         self.toggleAction = toggleAction
@@ -17,6 +18,22 @@ class StatusBarController {
         }
 
         buildMenu()
+    }
+
+    func updateBadge(_ count: Int) {
+        guard let button = statusItem.button else { return }
+        if count > 0 {
+            if badgeView == nil {
+                let bv = BadgeView(frame: NSRect(x: button.bounds.width - 12, y: button.bounds.height - 12, width: 14, height: 14))
+                bv.autoresizingMask = [.minXMargin, .minYMargin]
+                button.addSubview(bv)
+                badgeView = bv
+            }
+            badgeView?.count = count
+            badgeView?.isHidden = false
+        } else {
+            badgeView?.isHidden = true
+        }
     }
 
     private func buildMenu() {
@@ -42,6 +59,10 @@ class StatusBarController {
         let zoomParent = NSMenuItem(title: "글자 크기", action: nil, keyEquivalent: "")
         zoomParent.submenu = zoomMenu
         menu.addItem(zoomParent)
+
+        let testNotiItem = NSMenuItem(title: "테스트 알림", action: #selector(testNotification), keyEquivalent: "")
+        testNotiItem.target = self
+        menu.addItem(testNotiItem)
 
         let shortcutItem = NSMenuItem(title: "단축키 변경...", action: #selector(changeShortcut), keyEquivalent: "")
         shortcutItem.target = self
@@ -74,9 +95,32 @@ class StatusBarController {
         appDelegate.openSettings()
     }
 
+    @objc private func testNotification() { panel?.sendTestNotification() }
+
     @objc private func zoomIn() { panel?.zoomIn() }
     @objc private func zoomOut() { panel?.zoomOut() }
     @objc private func zoomReset() { panel?.zoomReset() }
 
     @objc private func quitApp() { NSApp.terminate(nil) }
+}
+
+private class BadgeView: NSView {
+    var count: Int = 0 { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.systemRed.setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+
+        let text = count > 9 ? "9+" : "\(count)"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 8, weight: .bold),
+            .foregroundColor: NSColor.white
+        ]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let point = NSPoint(
+            x: bounds.midX - size.width / 2,
+            y: bounds.midY - size.height / 2
+        )
+        (text as NSString).draw(at: point, withAttributes: attrs)
+    }
 }

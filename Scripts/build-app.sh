@@ -28,6 +28,9 @@ cat > "$APP_BUNDLE/Contents/PkgInfo" << 'EOF'
 APPL????
 EOF
 
+echo "=== Code signing ==="
+codesign --force --deep --sign - "$APP_BUNDLE"
+
 echo "=== Installing to ~/Applications/ ==="
 mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALL_DIR/${APP_NAME}.app"

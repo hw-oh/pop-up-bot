@@ -1,61 +1,73 @@
-# PopUpBot - Telegram 팝업 챗봇
+# PopUpBot
 
-macOS 메뉴바에 상주하며, 글로벌 단축키로 텔레그램 봇 채팅을 팝업 윈도우로 열어주는 네이티브 앱입니다.
+[![한국어](https://img.shields.io/badge/lang-한국어-blue)](README_ko.md)
 
-## 요구 사항
+A lightweight native macOS menu bar app that opens a Telegram bot chat in a floating pop-up window via a global hotkey.
 
-- macOS 14.0 (Sonoma) 이상
+## Requirements
+
+- macOS 14.0 (Sonoma) or later
 - Swift 5.9+
-- 텔레그램 계정 (웹 로그인 필요)
+- Telegram account (web login required on first launch)
 
-## 빌드 & 실행
+## Build & Run
 
-### 빠른 실행 (개발용)
+### Quick Start (development)
 
 ```bash
 swift build -c release
 .build/release/PopUpBot
 ```
 
-### .app 번들 생성
+### Create .app Bundle
 
 ```bash
 ./Scripts/build-app.sh
 open build/PopUpBot.app
 ```
 
-### 설치
+### Install
 
 ```bash
 cp -r build/PopUpBot.app ~/Applications/
 ```
 
-## 사용법
+## Usage
 
-1. 앱 실행 시 메뉴바에 말풍선 아이콘이 표시됩니다
-2. 최초 실행 시 텔레그램 봇 유저네임 입력 다이얼로그가 나타납니다
-3. 텔레그램 웹에 로그인합니다 (최초 1회)
-4. **Option + Space** 를 누르면 팝업 채팅 윈도우가 나타납니다
-5. 다시 누르면 사라집니다
+1. On launch, a speech-bubble icon appears in the menu bar.
+2. On first run, a settings dialog asks for your Telegram Bot API token and bot username.
+3. Log in to Telegram Web (one-time).
+4. Press **Option + Space** to toggle the pop-up chat window.
 
-## 메뉴바 메뉴
+## Features
 
-- **챗봇 열기/닫기** - 팝업 토글
-- **봇 유저네임 설정** - 연결할 봇 변경
-- **단축키 변경** - 글로벌 단축키 변경 (원하는 키 조합 직접 입력)
-- **종료** - 앱 종료
+- **Global Hotkey** — Configurable shortcut (default `Option + Space`) to toggle the panel.
+- **Floating Panel** — Always-on-top, resizable & draggable window positioned at the bottom-left.
+- **Native Notifications** — Receive macOS notifications for incoming messages when the panel is hidden.
+- **Zoom Control** — `⌘+` / `⌘-` / `⌘0` to adjust font size; persisted across sessions.
+- **Settings Window** — Configure bot token and username via a dedicated settings UI.
+- **Dismiss Shortcuts** — `Esc` or `⌘W` to close the panel; clicking outside also hides it.
 
-## 단축키 변경
+## Menu Bar
 
-메뉴바 > "단축키 변경" 클릭 후, 원하는 수정키(⌘⌥⇧⌃) + 키 조합을 누르면 즉시 등록됩니다. 변경된 단축키는 앱 재시작 후에도 유지됩니다.
+- **Open/Close Chatbot** — Toggle the pop-up panel
+- **Font Size** — Zoom in / out / reset
+- **Change Shortcut** — Record a new global hotkey
+- **Settings…** — Bot token & username configuration
+- **Quit** — Exit the app
 
-## 프로젝트 구조
+## Project Structure
 
 ```
 Sources/PopUpBot/
-├── main.swift               # 앱 진입점
-├── AppDelegate.swift        # 앱 생명주기 관리
-├── HotKeyManager.swift      # 글로벌 단축키 (Carbon API)
-├── PopUpPanel.swift         # 플로팅 WebView 패널
-└── StatusBarController.swift # 메뉴바 아이콘 + 메뉴
+├── main.swift                # App entry point
+├── AppDelegate.swift         # App lifecycle management
+├── HotKeyManager.swift       # Global hotkey (Carbon API)
+├── PopUpPanel.swift          # Floating WebView panel & notifications
+├── SettingsWindow.swift      # Bot credentials settings UI
+└── StatusBarController.swift # Menu bar icon & menu
 ```
+
+## License
+
+MIT

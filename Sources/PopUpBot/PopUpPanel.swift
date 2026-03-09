@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 import UserNotifications
 
-class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     private var webView: WKWebView!
     private var clickMonitor: Any?
     private let minPanelSize = NSSize(width: 360, height: 420)
@@ -158,13 +158,20 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
         loadTelegramWeb()
     }
 
+    private var notificationsAvailable: Bool {
+        Bundle.main.bundleIdentifier != nil
+    }
+
+    private var unreadCount = 0
+    var onBadgeCountChanged: ((Int) -> Void)?
+
     private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        guard notificationsAvailable else { return }
+        UNUserNotificationCenter.current().delegate = self
     }
 
     private static let notificationInterceptJS = """
     (function() {
-        var OriginalNotification = window.Notification;
         var _permission = "granted";
 
         function FakeNotification(title, options) {
@@ -176,11 +183,13 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
             this.onclick = null;
             this.onclose = null;
 
-            window.webkit.messageHandlers.nativeNotification.postMessage({
-                title: title,
-                body: options.body || "",
-                tag: options.tag || ""
-            });
+            try {
+                window.webkit.messageHandlers.nativeNotification.postMessage({
+                    title: title,
+                    body: options.body || "",
+                    tag: options.tag || ""
+                });
+            } catch(e) {}
         }
 
         FakeNotification.permission = _permission;
@@ -189,12 +198,47 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
             return Promise.resolve(_permission);
         };
         FakeNotification.prototype.close = function() {};
+        FakeNotification.prototype.addEventListener = function() {};
+        FakeNotification.prototype.removeEventListener = function() {};
 
         Object.defineProperty(FakeNotification, 'permission', {
             get: function() { return _permission; }
         });
 
         window.Notification = FakeNotification;
+
+        // Service Worker showNotification intercept
+        if (navigator.serviceWorker) {
+            var origRegister = navigator.serviceWorker.register;
+            navigator.serviceWorker.register = function() {
+                return origRegister.apply(this, arguments).then(function(reg) {
+                    var origShow = reg.showNotification;
+                    reg.showNotification = function(title, options) {
+                        options = options || {};
+                        try {
+                            window.webkit.messageHandlers.nativeNotification.postMessage({
+                                title: title,
+                                body: options.body || "",
+                                tag: options.tag || ""
+                            });
+                        } catch(e) {}
+                        return Promise.resolve();
+                    };
+                    return reg;
+                });
+            };
+        }
+
+        // navigator.permissions.query → always "granted" for notifications
+        if (navigator.permissions && navigator.permissions.query) {
+            var origQuery = navigator.permissions.query.bind(navigator.permissions);
+            navigator.permissions.query = function(desc) {
+                if (desc && desc.name === 'notifications') {
+                    return Promise.resolve({ state: 'granted', onchange: null });
+                }
+                return origQuery(desc);
+            };
+        }
     })();
     """
 
@@ -203,19 +247,92 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
         guard message.name == "nativeNotification",
               let body = message.body as? [String: String] else { return }
 
+        print("[PopUpBot] 알림 수신: \(body)")
+
         if isVisible && isKeyWindow { return }
 
-        let title = body["title"] ?? "Telegram"
-        let text = body["body"] ?? ""
+        sendNativeNotification(
+            title: body["title"] ?? "Telegram",
+            body: body["body"] ?? "",
+            id: body["tag"] ?? UUID().uuidString
+        )
+    }
+
+    private func sendNativeNotification(title: String, body: String, id: String) {
+        guard notificationsAvailable else { return }
+        unreadCount += 1
+        NSApp.dockTile.badgeLabel = "\(unreadCount)"
+        onBadgeCountChanged?(unreadCount)
 
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = text
+        content.body = body
         content.sound = .default
 
-        let id = body["tag"] ?? UUID().uuidString
         let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    private func clearBadge() {
+        unreadCount = 0
+        NSApp.dockTile.badgeLabel = nil
+        onBadgeCountChanged?(0)
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
+    func sendTestNotification() {
+        guard notificationsAvailable else {
+            showAlert(title: "알림 불가", message: "번들 없이 실행 중입니다. .app 번들로 빌드 후 실행하세요.")
+            return
+        }
+
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .notDetermined:
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                        DispatchQueue.main.async {
+                            if granted {
+                                self?.sendNativeNotification(title: "PopUpBot 테스트", body: "알림이 정상적으로 작동합니다!", id: "test-\(UUID().uuidString)")
+                            } else {
+                                self?.showAlert(title: "알림 거부됨", message: "시스템 설정 > 알림 에서 PopUpBot을 허용해 주세요.")
+                            }
+                        }
+                    }
+                case .denied:
+                    self?.showAlert(title: "알림 꺼져 있음", message: "시스템 설정 > 알림 > Telegram Popup Bot 에서 알림을 허용해 주세요.")
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings")!)
+                case .authorized, .provisional, .ephemeral:
+                    self?.sendNativeNotification(title: "PopUpBot 테스트", body: "알림이 정상적으로 작동합니다!", id: "test-\(UUID().uuidString)")
+                @unknown default:
+                    self?.showAlert(title: "알 수 없음", message: "알림 권한 상태: \(settings.authorizationStatus.rawValue)")
+                }
+            }
+        }
+    }
+
+    private func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "확인")
+        alert.runModal()
+    }
+
+    // UNUserNotificationCenterDelegate — allow showing notifications while app is running
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        showPanel()
+        clearBadge()
+        completionHandler()
     }
 
     private func loadTelegramWeb() {
@@ -283,6 +400,7 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
 
         focusBotChatOnly()
         startClickMonitor()
+        clearBadge()
     }
 
     func hidePanel() {
@@ -338,18 +456,43 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
         loadTelegramWeb()
     }
 
+    private var currentZoomPercent: Int {
+        get {
+            let saved = UserDefaults.standard.integer(forKey: "textZoomPercent")
+            return saved > 0 ? saved : 100
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "textZoomPercent")
+        }
+    }
+
     private func applyZoom() {
-        let saved = UserDefaults.standard.double(forKey: "webViewZoom")
-        webView.magnification = saved > 0 ? saved : 1.0
+        let pct = currentZoomPercent
+        let js = """
+        (function() {
+            var id = 'popupbot-text-zoom';
+            var el = document.getElementById(id);
+            if (!el) { el = document.createElement('style'); el.id = id; document.head.appendChild(el); }
+            el.textContent = '.message, .text-content, .peer-title, .document-wrapper, .reply-markup, .webpage { font-size: \(pct)% !important; }';
+        })();
+        """
+        webView.evaluateJavaScript(js)
     }
 
-    private func saveZoom() {
-        UserDefaults.standard.set(webView.magnification, forKey: "webViewZoom")
+    func zoomIn() {
+        currentZoomPercent = min(currentZoomPercent + 10, 200)
+        applyZoom()
     }
 
-    func zoomIn() { webView.magnification = min(webView.magnification + 0.1, 2.0); saveZoom() }
-    func zoomOut() { webView.magnification = max(webView.magnification - 0.1, 0.5); saveZoom() }
-    func zoomReset() { webView.magnification = 1.0; saveZoom() }
+    func zoomOut() {
+        currentZoomPercent = max(currentZoomPercent - 10, 60)
+        applyZoom()
+    }
+
+    func zoomReset() {
+        currentZoomPercent = 100
+        applyZoom()
+    }
     func increasePanelSize() { resizePanel(widthDelta: 40, heightDelta: 60) }
     func decreasePanelSize() { resizePanel(widthDelta: -40, heightDelta: -60) }
     func resetPanelSize() {

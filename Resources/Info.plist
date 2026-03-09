@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>Telegram Popup Bot</string>
     <key>CFBundleIdentifier</key>
-    <string>com.popup.telegrambot</string>
+    <string>com.hwoh.PopUpBot</string>
     <key>CFBundleVersion</key>
     <string>1.0.0</string>
     <key>CFBundleShortVersionString</key>
@@ -21,7 +21,7 @@
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
-    <true/>
+    <false/>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
