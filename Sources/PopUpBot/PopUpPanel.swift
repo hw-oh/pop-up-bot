@@ -1,7 +1,8 @@
 import AppKit
 import WebKit
+import UserNotifications
 
-class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate {
+class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
     private var clickMonitor: Any?
     private let minPanelSize = NSSize(width: 360, height: 420)
@@ -127,6 +128,8 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate {
     }
 
     private func setupContent() {
+        requestNotificationPermission()
+
         let container = NSView(frame: contentView!.bounds)
         container.autoresizingMask = [.width, .height]
         container.wantsLayer = true
@@ -136,6 +139,15 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate {
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
+
+        let notificationScript = WKUserScript(
+            source: Self.notificationInterceptJS,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        config.userContentController.addUserScript(notificationScript)
+        config.userContentController.add(self, name: "nativeNotification")
+
         webView = WKWebView(frame: container.bounds, configuration: config)
         webView.navigationDelegate = self
         webView.autoresizingMask = [.width, .height]
@@ -144,6 +156,66 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate {
 
         contentView?.addSubview(container)
         loadTelegramWeb()
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+
+    private static let notificationInterceptJS = """
+    (function() {
+        var OriginalNotification = window.Notification;
+        var _permission = "granted";
+
+        function FakeNotification(title, options) {
+            options = options || {};
+            this.title = title;
+            this.body = options.body || "";
+            this.icon = options.icon || "";
+            this.tag = options.tag || "";
+            this.onclick = null;
+            this.onclose = null;
+
+            window.webkit.messageHandlers.nativeNotification.postMessage({
+                title: title,
+                body: options.body || "",
+                tag: options.tag || ""
+            });
+        }
+
+        FakeNotification.permission = _permission;
+        FakeNotification.requestPermission = function(cb) {
+            if (cb) cb(_permission);
+            return Promise.resolve(_permission);
+        };
+        FakeNotification.prototype.close = function() {};
+
+        Object.defineProperty(FakeNotification, 'permission', {
+            get: function() { return _permission; }
+        });
+
+        window.Notification = FakeNotification;
+    })();
+    """
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.name == "nativeNotification",
+              let body = message.body as? [String: String] else { return }
+
+        if isVisible && isKeyWindow { return }
+
+        let title = body["title"] ?? "Telegram"
+        let text = body["body"] ?? ""
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = text
+        content.sound = .default
+
+        let id = body["tag"] ?? UUID().uuidString
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 
     private func loadTelegramWeb() {
