@@ -5,6 +5,7 @@ import UserNotifications
 class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     private var webView: WKWebView!
     private var clickMonitor: Any?
+    private var keyMonitor: Any?
     private let minPanelSize = NSSize(width: 360, height: 420)
     private let maxPanelSize = NSSize(width: 980, height: 1100)
 
@@ -106,7 +107,6 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { hidePanel(); return }
         if event.modifierFlags.contains(.command) {
             switch event.charactersIgnoringModifiers {
             case "w": hidePanel(); return
@@ -360,11 +360,13 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
 
         focusBotChatOnly()
         startClickMonitor()
+        startKeyMonitor()
         clearBadge()
     }
 
     func hidePanel() {
         stopClickMonitor()
+        stopKeyMonitor()
         savePanelSize()
         var end = frame
         end.origin.y -= 8
@@ -395,7 +397,23 @@ class PopUpPanel: NSPanel, NSWindowDelegate, WKNavigationDelegate, WKScriptMessa
         if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
     }
 
-    func windowWillClose(_ n: Notification) { stopClickMonitor() }
+    private func startKeyMonitor() {
+        stopKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.isVisible, self.isKeyWindow else { return event }
+            if event.keyCode == 53 {
+                self.hidePanel()
+                return nil  // consume the event so WebView doesn't get it
+            }
+            return event
+        }
+    }
+
+    private func stopKeyMonitor() {
+        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+    }
+
+    func windowWillClose(_ n: Notification) { stopClickMonitor(); stopKeyMonitor() }
 
     func windowDidResize(_ notification: Notification) {
         savePanelSize()
